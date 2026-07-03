@@ -179,6 +179,7 @@ def process_single_video(url: str, lang: str = 'en', prefer_manual: bool = True)
     thumbnail = info.get('thumbnail')
     subtitles = info.get('subtitles', {})
     auto_subs = info.get('automatic_captions', {})
+    description = info.get('description', '')
     
     selected_subs = None
     actual_lang = None
@@ -277,6 +278,7 @@ def process_single_video(url: str, lang: str = 'en', prefer_manual: bool = True)
                 'title': title,
                 'views': format_views(view_count),
                 'thumbnail': thumbnail,
+                'description': description,
                 'language': actual_lang,
                 'status': 'success',
                 'raw_transcript': ' '.join(transcript_raw),
@@ -307,6 +309,7 @@ def process_single_video(url: str, lang: str = 'en', prefer_manual: bool = True)
                 'title': title,
                 'views': format_views(view_count),
                 'thumbnail': thumbnail,
+                'description': description,
                 'language': actual_lang,
                 'status': 'success',
                 'raw_transcript': raw_text,
@@ -425,13 +428,53 @@ class TranscriptRequestHandler(BaseHTTPRequestHandler):
         base_dir = os.path.dirname(os.path.abspath(__file__))
         static_dir = os.path.join(base_dir, 'static')
         
-        # Routing static assets
+        # Routing static assets and APIs
         if parsed_path == '/' or parsed_path == '/index.html':
             self.serve_file(os.path.join(static_dir, 'index.html'), 'text/html')
         elif parsed_path == '/style.css':
             self.serve_file(os.path.join(static_dir, 'style.css'), 'text/css')
         elif parsed_path == '/app.js':
             self.serve_file(os.path.join(static_dir, 'app.js'), 'application/javascript')
+        elif parsed_path == '/api/thumbnail':
+            from urllib.parse import parse_qs
+            query = parse_qs(urlparse(self.path).query)
+            thumb_url = query.get('url', [None])[0]
+            title = query.get('title', ['thumbnail'])[0]
+            
+            if not thumb_url:
+                self.send_response(400)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': 'Missing url parameter'}).encode('utf-8'))
+                return
+                
+            try:
+                safe_title = sanitize_filename(title)
+                filename = f"{safe_title}_thumbnail.jpg"
+                
+                # Strip non-ASCII characters for fallback filename (latin-1 safe)
+                fallback_filename = filename.encode('ascii', 'ignore').decode('ascii')
+                # URL-encode the UTF-8 filename for modern RFC 6266 standard
+                from urllib.parse import quote
+                utf8_filename = quote(filename)
+                
+                req = urllib.request.Request(
+                    thumb_url,
+                    headers={"User-Agent": "Mozilla/5.0"}
+                )
+                with urllib.request.urlopen(req) as response:
+                    content = response.read()
+                    
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/jpeg')
+                self.send_header('Content-Disposition', f'attachment; filename="{fallback_filename}"; filename*=UTF-8\'\'{utf8_filename}')
+                self.end_headers()
+                self.wfile.write(content)
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({'error': f'Failed to download thumbnail: {str(e)}'}).encode('utf-8'))
         else:
             self.send_error(404, "File not found")
 

@@ -404,6 +404,9 @@ function createSuccessCard(video, index) {
                     <button class="action-btn" onclick="downloadSubtitleFile(${index}, 'vtt')">
                         <i data-lucide="file-text" size="14"></i> Export VTT
                     </button>
+                    <button class="action-btn" onclick="downloadThumbnail(${index})">
+                        <i data-lucide="image" size="14"></i> Thumbnail
+                    </button>
                 </div>
             </div>
         </div>
@@ -900,6 +903,15 @@ function printAITranscript(index) {
             <div class="meta">
                 Source: <a href="${escapeHTML(video.url)}" target="_blank">${escapeHTML(video.url)}</a> | Views: ${escapeHTML(video.views)}
             </div>
+            <div style="margin: 20px 0 30px 0; text-align: center;">
+                <img src="${escapeHTML(video.thumbnail)}" alt="Thumbnail" style="max-width: 100%; max-height: 280px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
+            </div>
+            ${video.description ? `
+            <div style="margin: 20px 0 30px 0; padding: 16px; background: #f3f4f6; border-left: 4px solid #d1d5db; border-radius: 8px; font-size: 0.88rem; color: #4b5563; white-space: pre-wrap; line-height: 1.5;">
+                <strong style="color: #1f2937;">Video Description:</strong>
+                <div style="margin-top: 8px;">${escapeHTML(video.description)}</div>
+            </div>
+            ` : ''}
             <div class="content">${escapeHTML(box.textContent)}</div>
             <script>
                 window.onload = function() {
@@ -945,4 +957,12 @@ function apply3DTiltEffect() {
 function closeHelpModal() {
     document.getElementById("help-modal").style.display = "none";
     localStorage.setItem("has_visited_transcript_hub", "true");
+}
+
+function downloadThumbnail(index) {
+    const video = extractedVideos[index];
+    if (!video || !video.thumbnail) return;
+    
+    const downloadUrl = `/api/thumbnail?url=${encodeURIComponent(video.thumbnail)}&title=${encodeURIComponent(video.title)}`;
+    window.location.href = downloadUrl;
 }
