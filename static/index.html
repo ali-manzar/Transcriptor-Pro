@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Transcript Hub Pro</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800;900&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/app.js" defer></script>
+</head>
+<body>
+    <!-- Glowing background elements -->
+    <div class="glowing-orb orb-1"></div>
+    <div class="glowing-orb orb-2"></div>
+    <div class="glowing-orb orb-3"></div>
+
+    <!-- Help Guide Modal Overlay -->
+    <div class="modal-overlay" id="help-modal" style="display:none;">
+        <div class="modal-card">
+            <button class="modal-close-btn" onclick="closeHelpModal()">&times;</button>
+            <div class="modal-header">
+                <i data-lucide="sparkles" size="24" style="color:var(--primary); filter:drop-shadow(0 0 8px var(--primary-glow));"></i>
+                <h2>Welcome to Transcript Hub</h2>
+            </div>
+            <div class="modal-subtitle">Quick guide to extract, summarize, and format transcripts like a pro.</div>
+            
+            <div class="modal-steps">
+                <div class="modal-step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <h4>Paste YouTube URLs</h4>
+                        <p>Input one or multiple YouTube video links (one per line) in the input area on the left.</p>
+                    </div>
+                </div>
+                <div class="modal-step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <h4>Configure Options</h4>
+                        <p>Select your target language and toggle whether you prefer manual subtitles or YouTube's auto-generated captions.</p>
+                    </div>
+                </div>
+                <div class="modal-step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <h4>Integrate Gemini API</h4>
+                        <p>Paste your Gemini API Key in the config panel. This enables real-time AI summary, formatting, action items, and chaptering.</p>
+                    </div>
+                </div>
+                <div class="modal-step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <h4>Export & Share</h4>
+                        <p>Export transcripts to standard <strong>TXT</strong>, <strong>SRT</strong>, or <strong>WebVTT</strong> subtitles, copy raw text, copy jump links, or print as <strong>PDF</strong>.</p>
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn" style="width:100%; margin-top:10px;" onclick="closeHelpModal()">
+                Get Started <i data-lucide="arrow-right" size="16"></i>
+            </button>
+        </div>
+    </div>
+
+    <div class="container">
+        <header>
+            <div style="display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
+                <div class="badge-pro"><i data-lucide="shield-check" size="14"></i> Transcript Engine</div>
+                <div class="badge-pro" id="open-help-btn" style="cursor:pointer; background:rgba(244, 114, 182, 0.12); border-color:rgba(244, 114, 182, 0.25); color:var(--accent);"><i data-lucide="help-circle" size="14"></i> How to Use</div>
+            </div>
+            <h1>YouTube Transcript Hub</h1>
+            <div class="subtitle">Extract clean transcripts, metadata, views, and titles from multiple YouTube videos simultaneously. Perform streaming AI summarization, translation, and chaptering.</div>
+        </header>
+
+        <div class="app-grid">
+            <!-- Settings & Input Column -->
+            <div style="display:flex; flex-direction:column; gap:20px;">
+                <div class="card">
+                    <!-- Lite UI Toggle Callout -->
+                    <div style="display:flex; align-items:center; justify-content:space-between; background:rgba(192, 132, 252, 0.08); border: 1px solid rgba(192, 132, 252, 0.25); padding: 12px 16px; border-radius:14px; margin-bottom: 4px;">
+                        <label for="lite-mode-toggle" style="text-transform:none; font-size:0.86rem; color:#fff; cursor:pointer; font-weight:600; letter-spacing:0; display:flex; align-items:center; gap:8px; margin:0;">
+                            <i data-lucide="zap-off" size="14" style="color:var(--primary);"></i> Lite UI Mode (Low-End Devices)
+                        </label>
+                        <input type="checkbox" id="lite-mode-toggle" style="cursor:pointer; width:18px; height:18px; accent-color:var(--primary); margin:0;">
+                    </div>
+
+                    <div class="input-group">
+                        <label for="urls">YouTube Video URLs</label>
+                        <textarea id="urls" placeholder="Paste YouTube links here (one per line)...&#10;https://www.youtube.com/watch?v=dQw4w9WgXcQ&#10;https://youtu.be/jNQXAC9IVRw"></textarea>
+                    </div>
+
+                    <div class="input-group">
+                        <label for="lang">Target Transcript Language</label>
+                        <select id="lang">
+                            <option value="en">English (en)</option>
+                            <option value="es">Spanish (es)</option>
+                            <option value="fr">French (fr)</option>
+                            <option value="de">German (de)</option>
+                            <option value="ja">Japanese (ja)</option>
+                            <option value="ko">Korean (ko)</option>
+                            <option value="zh">Chinese (zh)</option>
+                            <option value="hi">Hindi (hi)</option>
+                            <option value="ur">Urdu (ur)</option>
+                            <option value="bn">Bengali (bn)</option>
+                            <option value="pa">Punjabi (pa)</option>
+                            <option value="id">Indonesian (id)</option>
+                            <option value="vi">Vietnamese (vi)</option>
+                            <option value="th">Thai (th)</option>
+                            <option value="ta">Tamil (ta)</option>
+                            <option value="tl">Filipino/Tagalog (tl)</option>
+                            <option value="ar">Arabic (ar)</option>
+                            <option value="tr">Turkish (tr)</option>
+                            <option value="pt">Portuguese (pt)</option>
+                            <option value="it">Italian (it)</option>
+                            <option value="ru">Russian (ru)</option>
+                        </select>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:8px; margin: 4px 0 8px 0;">
+                        <input type="checkbox" id="prefer-manual" checked style="cursor:pointer; width:16px; height:16px; accent-color:var(--primary);">
+                        <label for="prefer-manual" style="text-transform:none; font-size:0.82rem; color:var(--text-muted); cursor:pointer; letter-spacing:0;">Prefer Manual Subtitles</label>
+                    </div>
+
+                    <button id="extract-btn" class="btn">
+                        <i data-lucide="sparkles"></i> Extract Transcripts
+                    </button>
+                </div>
+
+                <!-- Gemini API Settings Card -->
+                <div class="card" style="padding: 20px;">
+                    <div class="input-group">
+                        <label>Gemini AI Config</label>
+                        <div style="font-size:0.78rem; color:var(--text-muted); line-height:1.45;">
+                            Provide your Gemini API Key to enable <strong>AI Streaming Tasks</strong> (Beautify, Summarize, Actions, and Chapters).
+                        </div>
+                        <!-- Spoonfeed Get API Key Help Guide -->
+                        <div style="margin-top: 10px; padding: 12px; background: rgba(192, 132, 252, 0.05); border: 1px dashed rgba(192, 132, 252, 0.2); border-radius: 12px; font-size: 0.76rem; line-height: 1.5; color: var(--text-muted);">
+                            <div style="font-weight: 700; color: #fff; margin-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+                                <i data-lucide="help-circle" size="14" style="color: var(--primary);"></i> How to obtain a free API Key:
+                            </div>
+                            <ol style="margin: 0; padding-left: 16px; display: flex; flex-direction: column; gap: 4px;">
+                                <li>Go to <a href="https://aistudio.google.com/" target="_blank" style="color: var(--primary); text-decoration: underline; font-weight: 600;">Google AI Studio</a>.</li>
+                                <li>Log in with any standard Google account.</li>
+                                <li>Click the blue <strong>"Get API Key"</strong> button in the top left corner.</li>
+                                <li>Click <strong>"Create API Key"</strong>, choose a project, and copy your generated key.</li>
+                                <li>Paste the key into the input field below to unlock AI tasks.</li>
+                            </ol>
+                        </div>
+                        <div class="key-input-wrapper" style="margin-top: 10px;">
+                            <i data-lucide="key" class="key-icon" size="16"></i>
+                            <input type="password" id="gemini-key" placeholder="Paste Gemini API Key...">
+                            <i data-lucide="eye" id="toggle-key-visibility" class="eye-icon" size="16" onclick="toggleKeyVisibility()"></i>
+                        </div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.75rem; color:var(--text-muted);">
+                        <span id="gemini-sdk-status">Checking server setup...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results Column -->
+            <div>
+                <!-- Statistics Dashboard Container -->
+                <div id="stats-dashboard" style="display:none;"></div>
+                
+                <div class="results-container" id="results-container">
+                    <div class="empty-state" id="empty-state">
+                        <i data-lucide="youtube" size="48"></i>
+                        <p>Enter one or more YouTube links on the left and click Extract.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        YouTube Transcript Hub Pro
+    </footer>
+
+    <script>
+        // Server side status injection
+        const HAS_GEMINI_SDK = __HAS_GEMINI_STATUS__;
+    </script>
+</body>
+</html>
