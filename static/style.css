@@ -708,13 +708,20 @@ select:focus {
     box-shadow: 0 0 15px var(--primary-glow), inset 0 1px 2px rgba(0,0,0,0.3);
 }
 
-.filter-wrapper i {
+.filter-wrapper i,
+.filter-wrapper svg,
+.filter-wrapper .lucide {
     position: absolute;
     left: 14px;
     top: 50%;
     transform: translateY(-50%);
     color: var(--text-muted);
     pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 14px;
+    width: 14px;
 }
 
 .match-count-badge {
@@ -1161,4 +1168,177 @@ body.lite-mode .line-ts:hover {
 body.lite-mode .key-input-wrapper input {
     background: #110c22 !important;
     box-shadow: none !important;
+}
+
+/* Combined AI Controls Styling */
+.combined-control-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    padding: 4px;
+    border-radius: 12px;
+    box-shadow: inset 0 1px 1px rgba(255,255,255,0.05);
+}
+
+.combined-select {
+    background: rgba(17, 12, 34, 0.6);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 600;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 180px;
+    height: 32px;
+    box-sizing: border-box;
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' fill='none' stroke='%23a78bfa' stroke-width='2' viewBox='0 0 24 24'><path d='M6 9l6 6 6-6'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding: 0 28px 0 12px;
+    line-height: 30px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.combined-select:hover {
+    border-color: rgba(167, 139, 250, 0.5);
+    background-color: rgba(17, 12, 34, 0.8);
+}
+
+.combined-select:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 10px var(--primary-glow);
+}
+
+.combined-btn {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--accent) 100%);
+    border: none;
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+    height: 32px;
+    box-sizing: border-box;
+    padding: 0 14px;
+    border-radius: 8px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+    box-shadow: 0 3px 8px rgba(167, 139, 250, 0.2);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.combined-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 
+        0 8px 20px rgba(167, 139, 250, 0.4),
+        0 0 15px var(--primary-glow);
+}
+
+.combined-btn:active {
+    transform: translateY(0);
+}
+
+/* Lite Mode override for Combined Select */
+body.lite-mode .combined-control-group {
+    background: #110c22 !important;
+    border-color: rgba(255,255,255,0.05) !important;
+}
+
+body.lite-mode .combined-select {
+    background: #1a1530 !important;
+    box-shadow: none !important;
+    appearance: auto;
+    -webkit-appearance: auto;
+    background-image: none;
+}
+
+body.lite-mode .combined-btn {
+    background: #c084fc !important;
+    transform: none !important;
+    box-shadow: none !important;
+}
+
+body.lite-mode .combined-btn:hover {
+    background: #a78bfa !important;
+    transform: none !important;
+}
+
+/* Premium Combined Output Stream styling */
+#combined-ai-box {
+    background: rgba(13, 8, 30, 0.45) !important;
+    border: 1px solid rgba(167, 139, 250, 0.15) !important;
+    box-shadow: 
+        0 10px 30px rgba(0, 0, 0, 0.5), 
+        0 0 25px rgba(167, 139, 250, 0.05),
+        inset 0 1px 1px rgba(255,255,255,0.05) !important;
+    backdrop-filter: blur(12px);
+    transition: all 0.3s ease;
+}
+
+#combined-ai-output {
+    background: rgba(0, 0, 0, 0.25) !important;
+    border: 1px solid rgba(255, 255, 255, 0.03) !important;
+    border-radius: 12px;
+    padding: 16px;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    color: #e2e8f0 !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(167, 139, 250, 0.2) transparent;
+}
+
+/* Custom Scrollbar for Webkit */
+#combined-ai-output::-webkit-scrollbar {
+    width: 6px;
+}
+#combined-ai-output::-webkit-scrollbar-track {
+    background: transparent;
+}
+#combined-ai-output::-webkit-scrollbar-thumb {
+    background: rgba(167, 139, 250, 0.2);
+    border-radius: 3px;
+}
+#combined-ai-output::-webkit-scrollbar-thumb:hover {
+    background: rgba(167, 139, 250, 0.4);
+}
+
+/* Disabled styling for action buttons */
+.action-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed !important;
+    pointer-events: none;
+    background: rgba(255,255,255,0.02) !important;
+    border-color: rgba(255,255,255,0.05) !important;
+}
+
+@keyframes progressshimmer {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(350%);
+    }
+}
+
+.spin-wheel {
+    width: 12px;
+    height: 12px;
+    border: 2px solid rgba(167, 139, 250, 0.2);
+    border-top-color: var(--primary);
+    border-radius: 50%;
+    animation: spin-loader 0.8s linear infinite;
+    display: inline-block;
+}
+
+@keyframes spin-loader {
+    to { transform: rotate(360deg); }
 }

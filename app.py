@@ -154,7 +154,8 @@ def parse_vtt(vtt_text: str) -> Tuple[str, List[Dict[str, str]]]:
 
 def process_single_video(url: str, lang: str = 'en', prefer_manual: bool = True) -> Optional[Dict[str, Any]]:
     """Fetch video metadata and extract transcript using json3 primary API or vtt fallback."""
-    url = url.strip()
+    # Clean zero-width spaces, byte order marks, LTR/RTL marks, and control characters
+    url = re.sub(r'[\u200b-\u200d\ufeff\u200e\u200f\x00-\x1f\x7f-\x9f]', '', url).strip()
     if not url:
         return None
         
@@ -180,6 +181,7 @@ def process_single_video(url: str, lang: str = 'en', prefer_manual: bool = True)
     subtitles = info.get('subtitles', {})
     auto_subs = info.get('automatic_captions', {})
     description = info.get('description', '')
+    channel = info.get('channel') or info.get('uploader', 'Unknown Channel')
     
     selected_subs = None
     actual_lang = None
@@ -279,6 +281,7 @@ def process_single_video(url: str, lang: str = 'en', prefer_manual: bool = True)
                 'views': format_views(view_count),
                 'thumbnail': thumbnail,
                 'description': description,
+                'channel': channel,
                 'language': actual_lang,
                 'status': 'success',
                 'raw_transcript': ' '.join(transcript_raw),
@@ -310,6 +313,7 @@ def process_single_video(url: str, lang: str = 'en', prefer_manual: bool = True)
                 'views': format_views(view_count),
                 'thumbnail': thumbnail,
                 'description': description,
+                'channel': channel,
                 'language': actual_lang,
                 'status': 'success',
                 'raw_transcript': raw_text,
@@ -409,10 +413,24 @@ def get_gemini_model(key: str) -> str:
     except Exception as e:
         print(f"Failed to query model list: {e}. Falling back to default list.", file=sys.stderr)
         
-    if not candidate_models:
-        candidate_models = ["gemini-1.5-flash", "gemini-1.5-flash-latest", "gemini-2.5-flash", "gemini-pro"]
-        
     return candidate_models[0]
+
+def generate_content_with_retry(model: Any, prompt: str, stream: bool = True) -> Any:
+    """Wrapper to handle Gemini API rate limits (429/ResourceExhausted) with exponential backoff."""
+    import time
+    max_retries = 3
+    delay = 15.0
+    for attempt in range(max_retries):
+        try:
+            return model.generate_content(prompt, stream=stream)
+        except Exception as e:
+            err_str = str(e).lower()
+            is_rate_limit = ("429" in err_str or "resourceexhausted" in err_str or "quota" in err_str or "rate limit" in err_str)
+            if is_rate_limit and attempt < max_retries - 1:
+                time.sleep(delay)
+                delay *= 2
+                continue
+            raise e
 
 class ThreadedHTTPServer(socketserver.ThreadingMixIn, HTTPServer):
     """Handle requests in a separate thread."""
@@ -589,39 +607,74 @@ class TranscriptRequestHandler(BaseHTTPRequestHandler):
                 model_name = get_gemini_model(key)
                 model = genai.GenerativeModel(model_name)
                 
-                # Context limit chunking
-                chunks = chunk_text(text, max_words=4000)
+                # Configure chunking limits dynamically: large limits for summary tasks to process cohesively,
+                # compact limits for beautify to avoid output truncation.
+                max_words = 4000 if prompt_type == 'beautify' else 15000
+                chunks = chunk_text(text, max_words=max_words)
                 
                 if len(chunks) == 1 or prompt_type == 'beautify':
                     for idx, chunk in enumerate(chunks):
+                        # Add a cooling delay between requests to naturally spread the API token load
+                        if idx > 0:
+                            import time
+                            time.sleep(5.0)
+                            
                         prompt = get_prompt_text(prompt_type, chunk)
                         if len(chunks) > 1:
                             prompt = f"(Processing chunk {idx+1}/{len(chunks)})\n\n{prompt}"
                         
-                        response = model.generate_content(prompt, stream=True)
+                        response = generate_content_with_retry(model, prompt, stream=True)
                         for chunk_stream in response:
                             try:
+                                # Safe check for prompt blocks
+                                if hasattr(chunk_stream, 'prompt_feedback') and chunk_stream.prompt_feedback and hasattr(chunk_stream.prompt_feedback, 'block_reason') and chunk_stream.prompt_feedback.block_reason:
+                                    reason = chunk_stream.prompt_feedback.block_reason
+                                    self.wfile.write(f"data: {json.dumps({'text': f'\\n\\n*[AI Segment Filtered: Safety Block ({reason})]*\\n\\n'})}\n\n".encode('utf-8'))
+                                    self.wfile.flush()
+                                    break
+                                
+                                # Safe check for mid-stream stops (e.g. recitation blocks)
+                                if hasattr(chunk_stream, 'candidates') and chunk_stream.candidates and chunk_stream.candidates[0].finish_reason:
+                                    fr = chunk_stream.candidates[0].finish_reason
+                                    if fr not in (1, 'STOP', None):
+                                        self.wfile.write(f"data: {json.dumps({'text': f'\\n\\n*[AI Generation Stopped: Safety Filter ({fr})]*\\n\\n'})}\n\n".encode('utf-8'))
+                                        self.wfile.flush()
+                                        break
+                                
                                 val = chunk_stream.text
                                 self.wfile.write(f"data: {json.dumps({'text': val})}\n\n".encode('utf-8'))
                                 self.wfile.flush()
-                            except Exception:
-                                continue
+                            except Exception as ex:
+                                err_msg = str(ex).lower()
+                                if "safety" in err_msg or "blocked" in err_msg or "finish_reason" in err_msg:
+                                    self.wfile.write(f"data: {json.dumps({'text': '\\n*[Segment blocked by safety policies]*\\n'})}\n\n".encode('utf-8'))
+                                    self.wfile.flush()
+                                    break
+                                else:
+                                    # Bubble actual quota / network error to client to avoid hanging
+                                    self.wfile.write(f"data: {json.dumps({'error': f'Gemini Stream Error: {str(ex)}'})}\n\n".encode('utf-8'))
+                                    self.wfile.flush()
+                                    break
                         if idx < len(chunks) - 1:
                             self.wfile.write(f"data: {json.dumps({'text': '\\n\\n'})}\n\n".encode('utf-8'))
                             self.wfile.flush()
                 else:
-                    # Map-Reduce Pattern for long-form Summary / Actions / Chapters
+                    # Map-Reduce Pattern for very long transcript lists
                     self.wfile.write(f"data: {json.dumps({'text': '*[AI is analyzing transcript sections in the background...]*\\n\\n'})}\n\n".encode('utf-8'))
                     self.wfile.flush()
                     
                     section_outputs = []
                     for idx, chunk in enumerate(chunks):
+                        if idx > 0:
+                            import time
+                            time.sleep(5.0)
+                            
                         map_prompt = (
                             f"Summarize the key facts, points, and discussions in this transcript segment. "
                             f"Preserve all specific details, names, and key metrics. This is segment {idx+1} of {len(chunks)}.\n\n"
                             f"Transcript Segment:\n{chunk}"
                         )
-                        res = model.generate_content(map_prompt)
+                        res = generate_content_with_retry(model, map_prompt, stream=False)
                         section_outputs.append(res.text)
                         self.wfile.write(f"data: {json.dumps({'text': f'• Segment {idx+1}/{len(chunks)} processed...\\n'})}\n\n".encode('utf-8'))
                         self.wfile.flush()
@@ -632,14 +685,36 @@ class TranscriptRequestHandler(BaseHTTPRequestHandler):
                     combined_sections = "\n\n".join(section_outputs)
                     reduce_prompt = get_prompt_text(prompt_type, combined_sections)
                     
-                    response = model.generate_content(reduce_prompt, stream=True)
+                    response = generate_content_with_retry(model, reduce_prompt, stream=True)
                     for chunk_stream in response:
                         try:
+                            if hasattr(chunk_stream, 'prompt_feedback') and chunk_stream.prompt_feedback and hasattr(chunk_stream.prompt_feedback, 'block_reason') and chunk_stream.prompt_feedback.block_reason:
+                                reason = chunk_stream.prompt_feedback.block_reason
+                                self.wfile.write(f"data: {json.dumps({'text': f'\\n\\n*[AI Segment Filtered: Safety Block ({reason})]*\\n\\n'})}\n\n".encode('utf-8'))
+                                self.wfile.flush()
+                                break
+                            
+                            if hasattr(chunk_stream, 'candidates') and chunk_stream.candidates and chunk_stream.candidates[0].finish_reason:
+                                fr = chunk_stream.candidates[0].finish_reason
+                                if fr not in (1, 'STOP', None):
+                                    self.wfile.write(f"data: {json.dumps({'text': f'\\n\\n*[AI Generation Stopped: Safety Filter ({fr})]*\\n\\n'})}\n\n".encode('utf-8'))
+                                    self.wfile.flush()
+                                    break
+                            
                             val = chunk_stream.text
                             self.wfile.write(f"data: {json.dumps({'text': val})}\n\n".encode('utf-8'))
                             self.wfile.flush()
-                        except Exception:
-                            continue
+                        except Exception as ex:
+                            err_msg = str(ex).lower()
+                            if "safety" in err_msg or "blocked" in err_msg or "finish_reason" in err_msg:
+                                self.wfile.write(f"data: {json.dumps({'text': '\\n*[Output blocked by safety policies]*\\n'})}\n\n".encode('utf-8'))
+                                self.wfile.flush()
+                                break
+                            else:
+                                # Bubble actual quota / network error to client to avoid hanging
+                                self.wfile.write(f"data: {json.dumps({'error': f'Gemini Stream Error: {str(ex)}'})}\n\n".encode('utf-8'))
+                                self.wfile.flush()
+                                break
                             
             except Exception as e:
                 self.wfile.write(f"data: {json.dumps({'error': str(e)})}\n\n".encode('utf-8'))

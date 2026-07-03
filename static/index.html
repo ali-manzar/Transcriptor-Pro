@@ -165,6 +165,56 @@
                 <!-- Statistics Dashboard Container -->
                 <div id="stats-dashboard" style="display:none;"></div>
                 
+                <!-- Combined AI Report Card (Hidden by default) -->
+                <div id="combined-report-card" class="card" style="display:none; margin-bottom:20px; padding:24px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:16px; margin-bottom:4px;">
+                        <h2 style="font-size:1.25rem; font-weight:800; margin:0; display:flex; align-items:center; gap:8px; background:linear-gradient(135deg, #fff 0%, #c084fc 100%); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">
+                            <i data-lucide="layers" style="color:var(--primary);"></i> Combined AI Report Hub
+                        </h2>
+                        <div class="combined-control-group">
+                            <select id="combined-task-select" class="combined-select">
+                                <option value="beautify">Beautify Transcripts</option>
+                                <option value="summary">Unified Summary</option>
+                                <option value="action_items">Cohesive Action Items</option>
+                                <option value="chapters">Unified Chapters</option>
+                            </select>
+                            <button id="generate-combined-btn" class="combined-btn" onclick="generateCombinedAIReport()">
+                                <i data-lucide="sparkles" size="14"></i> Run Combined AI
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div id="combined-ai-box" style="display:none; position:relative; background:rgba(0,0,0,0.25); border:1px solid var(--border-color); border-radius:18px; padding:20px; margin-top:16px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <span style="font-size:0.78rem; font-weight:700; color:var(--primary); letter-spacing:0.05em; text-transform:uppercase; display:flex; align-items:center; gap:8px;">
+                                Combined Output Stream
+                                <span id="combined-spin-wheel" style="display:none;" class="spin-wheel"></span>
+                            </span>
+                            <span id="combined-progress-text" style="font-size:0.75rem; color:var(--text-muted); font-weight:600;"></span>
+                            <div style="display:flex; gap:8px;">
+                                <button id="btn-copy-combined" class="action-btn" onclick="copyCombinedReport()">
+                                    <i data-lucide="copy" size="12"></i> Copy
+                                </button>
+                                <button id="btn-download-combined" class="action-btn" onclick="downloadCombinedReport()">
+                                    <i data-lucide="download" size="12"></i> Download MD
+                                </button>
+                                <button id="btn-print-combined" class="action-btn" onclick="printCombinedReport()">
+                                    <i data-lucide="printer" size="12"></i> Print/PDF
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Premium Loader Bar -->
+                        <div id="combined-progress-container" style="display:none; height:4px; width:100%; background:rgba(255,255,255,0.05); border-radius:2px; overflow:hidden; margin-bottom:14px;">
+                            <div id="combined-progress-bar" style="height:100%; width:30%; background:linear-gradient(90deg, var(--primary) 0%, var(--accent) 100%); border-radius:2px; animation: progressshimmer 1.5s infinite ease-in-out;"></div>
+                        </div>
+                        
+                        <div id="combined-ai-output" class="content-box" style="font-size:0.9rem; line-height:1.6; max-height:400px; overflow-y:auto; white-space:pre-wrap; color:var(--text-muted);">
+                            Generating combined report...
+                        </div>
+                    </div>
+                </div>
+                
                 <div class="results-container" id="results-container">
                     <div class="empty-state" id="empty-state">
                         <i data-lucide="youtube" size="48"></i>

@@ -195,7 +195,9 @@ async function handleExtraction() {
     const lang = document.getElementById("lang").value;
     const preferManual = document.getElementById("prefer-manual").checked;
     
-    const urls = urlsText.split("\n").map(u => u.trim()).filter(u => u.length > 0);
+    const urls = urlsText.split("\n")
+        .map(u => u.replace(/[\u200B-\u200D\uFEFF\u200E\u200F\u0000-\u001F\u007F-\u009F]/g, "").trim())
+        .filter(u => u.length > 0);
     
     if (urls.length === 0) {
         showToast("Please enter at least one YouTube URL.", true);
@@ -261,6 +263,16 @@ async function handleExtraction() {
 function renderResults() {
     const container = document.getElementById("results-container");
     container.innerHTML = "";
+
+    const combinedCard = document.getElementById("combined-report-card");
+    const successVideos = extractedVideos.filter(v => v.status === "success");
+    
+    if (successVideos.length >= 2) {
+        combinedCard.style.display = "block";
+    } else {
+        combinedCard.style.display = "none";
+        document.getElementById("combined-ai-box").style.display = "none";
+    }
 
     if (extractedVideos.length === 0) {
         container.innerHTML = `
@@ -389,6 +401,7 @@ function createSuccessCard(video, index) {
                 <div class="meta-row">
                     <span class="badge success"><i data-lucide="check-circle" size="12"></i> Active Transcript</span>
                     <span class="badge"><i data-lucide="globe" size="12"></i> Lang: ${escapedLang.toUpperCase()}</span>
+                    <span class="badge"><i data-lucide="user" size="12"></i> Channel: ${escapeHTML(video.channel || 'Unknown')}</span>
                 </div>
 
                 <div class="video-actions">
@@ -698,17 +711,17 @@ async function triggerStreamingBeautify(index) {
                 const cleanLine = line.trim();
                 if (cleanLine.startsWith("data: ")) {
                     const dataStr = cleanLine.substring(6);
+                    let payload = null;
                     try {
-                        const payload = JSON.parse(dataStr);
-                        if (payload.error) {
-                            throw new Error(payload.error);
-                        }
-                        if (payload.text) {
-                            // Append streamed text securely
-                            resultBox.textContent += payload.text;
-                        }
+                        payload = JSON.parse(dataStr);
                     } catch (jsonErr) {
-                        // Suppress JSON parse failures for partial segments
+                        continue;
+                    }
+                    if (payload && payload.error) {
+                        throw new Error(payload.error);
+                    }
+                    if (payload && payload.text) {
+                        resultBox.textContent += payload.text;
                     }
                 }
             }
@@ -965,4 +978,283 @@ function downloadThumbnail(index) {
     
     const downloadUrl = `/api/thumbnail?url=${encodeURIComponent(video.thumbnail)}&title=${encodeURIComponent(video.title)}`;
     window.location.href = downloadUrl;
+}
+
+let activeCombinedController = null;
+
+async function generateCombinedAIReport() {
+    const validVideos = extractedVideos.filter(v => v.status === "success");
+    if (validVideos.length < 2) {
+        showToast("At least two successfully extracted videos are required.", true);
+        return;
+    }
+    
+    const apiKey = document.getElementById("gemini-key").value.trim();
+    if (!apiKey) {
+        showToast("Please enter a Gemini API Key in the config panel.", true);
+        return;
+    }
+    
+    const taskSelect = document.getElementById("combined-task-select").value;
+    
+    const aiBox = document.getElementById("combined-ai-box");
+    const aiOutput = document.getElementById("combined-ai-output");
+    aiBox.style.display = "block";
+    aiOutput.textContent = "";
+    
+    // Show progress container, enable spin wheel, disable action buttons
+    document.getElementById("combined-progress-container").style.display = "block";
+    document.getElementById("combined-spin-wheel").style.display = "inline-block";
+    document.getElementById("btn-copy-combined").disabled = true;
+    document.getElementById("btn-download-combined").disabled = true;
+    document.getElementById("btn-print-combined").disabled = true;
+    
+    let progressPercent = 0;
+    const progressInterval = setInterval(() => {
+        if (progressPercent < 85) {
+            progressPercent += Math.random() * 8 + 2;
+        } else if (progressPercent < 96) {
+            progressPercent += 0.5;
+        }
+        progressPercent = Math.min(progressPercent, 98);
+        document.getElementById("combined-progress-bar").style.width = `${progressPercent}%`;
+        document.getElementById("combined-progress-text").textContent = `${Math.round(progressPercent)}% Complete`;
+    }, 450);
+    
+    let combinedText = "";
+    validVideos.forEach((video, i) => {
+        combinedText += `### VIDEO ${i+1}: ${video.title}\n`;
+        combinedText += `Channel: ${video.channel || 'Unknown'}\n`;
+        combinedText += `Views: ${video.views}\n`;
+        combinedText += `Description:\n${video.description || 'No description available.'}\n\n`;
+        combinedText += `Transcript:\n${video.raw_transcript}\n`;
+        combinedText += `=========================================\n\n`;
+    });
+    
+    aiOutput.innerHTML = `<em>Initializing Combined AI processing [Task: ${taskSelect.toUpperCase()}]...</em>\n`;
+    
+    if (activeCombinedController) activeCombinedController.abort();
+    activeCombinedController = new AbortController();
+    
+    try {
+        const response = await fetch("/api/beautify", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                text: combinedText,
+                apiKey: apiKey,
+                promptType: taskSelect
+            }),
+            signal: activeCombinedController.signal
+        });
+        
+        if (!response.ok) {
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData.error || `Server error: ${response.status}`);
+        }
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        
+        aiOutput.textContent = "";
+        
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+            
+            for (const line of lines) {
+                const cleanLine = line.trim();
+                if (!cleanLine || !cleanLine.startsWith("data: ")) continue;
+                
+                const dataStr = cleanLine.substring(6);
+                let payload = null;
+                try {
+                    payload = JSON.parse(dataStr);
+                } catch (jsonErr) {
+                    continue;
+                }
+                
+                if (payload && payload.error) {
+                    throw new Error(payload.error);
+                }
+                if (payload && payload.text) {
+                    aiOutput.textContent += payload.text;
+                    aiOutput.scrollTop = aiOutput.scrollHeight;
+                }
+            }
+        }
+        
+        clearInterval(progressInterval);
+        document.getElementById("combined-progress-bar").style.width = "100%";
+        document.getElementById("combined-progress-text").textContent = "100% Complete";
+        showToast("Combined AI Report generated successfully!");
+    } catch (e) {
+        clearInterval(progressInterval);
+        if (e.name === "AbortError") return;
+        aiOutput.innerHTML = `<span style="color:var(--error); font-weight:600;">Error: ${escapeHTML(e.message)}</span>`;
+        showToast(e.message, true);
+    } finally {
+        activeCombinedController = null;
+        clearInterval(progressInterval);
+        // Hide progress bar and re-enable action buttons after a short delay
+        setTimeout(() => {
+            document.getElementById("combined-progress-container").style.display = "none";
+            document.getElementById("combined-spin-wheel").style.display = "none";
+            document.getElementById("combined-progress-text").textContent = "";
+            document.getElementById("btn-copy-combined").disabled = false;
+            document.getElementById("btn-download-combined").disabled = false;
+            document.getElementById("btn-print-combined").disabled = false;
+        }, 800);
+    }
+}
+
+function copyCombinedReport() {
+    const text = document.getElementById("combined-ai-output").textContent;
+    navigator.clipboard.writeText(text);
+    showToast("Report copied to clipboard!");
+}
+
+function downloadCombinedReport() {
+    const text = document.getElementById("combined-ai-output").textContent;
+    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = `combined_ai_report.md`;
+    link.click();
+    showToast("Downloaded Combined Report!");
+}
+
+function printCombinedReport() {
+    const validVideos = extractedVideos.filter(v => v.status === "success");
+    const aiOutput = document.getElementById("combined-ai-output").textContent;
+    
+    const printWindow = window.open("", "_blank");
+    
+    let videosHtml = "";
+    validVideos.forEach((video, i) => {
+        videosHtml += `
+            <div class="video-meta-block">
+                <h3>Video ${i+1}: ${escapeHTML(video.title)}</h3>
+                <div class="meta-row">
+                    <strong>Channel:</strong> ${escapeHTML(video.channel || 'Unknown')} | 
+                    <strong>Views:</strong> ${escapeHTML(video.views)}
+                </div>
+                <div style="text-align: center; margin: 15px 0;">
+                    <img src="${escapeHTML(video.thumbnail)}" alt="Thumbnail" class="print-thumbnail">
+                </div>
+                ${video.description ? `
+                <div class="desc-box">
+                    <strong>Description:</strong>
+                    <div style="margin-top: 6px;">${escapeHTML(video.description)}</div>
+                </div>
+                ` : ''}
+            </div>
+            <hr class="separator">
+        `;
+    });
+    
+    printWindow.document.write(`
+        <html>
+        <head>
+            <title>YouTube Combined AI Report</title>
+            <style>
+                body {
+                    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+                    line-height: 1.65;
+                    color: #111827;
+                    max-width: 850px;
+                    margin: 0 auto;
+                    padding: 40px 20px;
+                }
+                h1 {
+                    font-size: 2.2rem;
+                    text-align: center;
+                    border-bottom: 3px double #d1d5db;
+                    padding-bottom: 12px;
+                    margin-bottom: 30px;
+                }
+                .video-meta-block {
+                    margin-bottom: 24px;
+                    page-break-inside: avoid;
+                }
+                h3 {
+                    font-size: 1.3rem;
+                    margin: 0 0 6px 0;
+                    color: #1f2937;
+                }
+                .meta-row {
+                    font-size: 0.88rem;
+                    color: #4b5563;
+                    margin-bottom: 10px;
+                }
+                .print-thumbnail {
+                    max-width: 100%;
+                    max-height: 220px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+                }
+                .desc-box {
+                    background: #f9fafb;
+                    border-left: 3px solid #d1d5db;
+                    padding: 12px;
+                    font-size: 0.82rem;
+                    color: #4b5563;
+                    white-space: pre-wrap;
+                    border-radius: 4px;
+                    margin-top: 10px;
+                }
+                .separator {
+                    border: 0;
+                    border-top: 1px solid #e5e7eb;
+                    margin: 30px 0;
+                }
+                .ai-section {
+                    margin-top: 40px;
+                }
+                .ai-header {
+                    font-size: 1.5rem;
+                    border-bottom: 2px solid #e5e7eb;
+                    padding-bottom: 8px;
+                    margin-bottom: 15px;
+                    color: #111827;
+                }
+                .ai-content {
+                    font-size: 1.05rem;
+                    white-space: pre-wrap;
+                    color: #111827;
+                }
+                @media print {
+                    body {
+                        padding: 0;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <h1>YouTube Combined AI Report</h1>
+            
+            <div class="video-meta-section">
+                <h2>Extracted Videos Summary</h2>
+                ${videosHtml}
+            </div>
+            
+            <div class="ai-section">
+                <div class="ai-header">Unified AI Processing Output</div>
+                <div class="ai-content">${escapeHTML(aiOutput)}</div>
+            </div>
+            
+            <script>
+                window.onload = function() {
+                    window.print();
+                };
+            </script>
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
 }
